@@ -1,36 +1,55 @@
-#include <zephyr/kernel.h>             // Funções básicas do Zephyr (ex: k_msleep, k_thread, etc.)
-#include <zephyr/device.h>             // API para obter e utilizar dispositivos do sistema
-#include <zephyr/drivers/gpio.h>       // API para controle de pinos de entrada/saída (GPIO)
-#include <pwm_z42.h>                // Biblioteca personalizada com funções de controle do TPM (Timer/PWM Module)
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/uart.h>
+#include <zephyr/kernel.h>
 
-// Define o valor do registrador MOD do TPM para configurar o período do PWM
-#define TPM_MODULE 1000         // Define a frequência do PWM fpwm = (TPM_CLK / (TPM_MODULE * PS))
-// Valores de duty cycle correspondentes a diferentes larguras de pulso
-uint16_t duty_50  = TPM_MODULE/2;       // 50% de duty cycle (meio brilho)
+/* LED configuration */
+#define LED0_NODE DT_ALIAS(led0)
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
 
-int main(void)
-{
-    // Inicializa o módulo TPM2 com:
-    // - base do TPMx
-    // - fonte de clock PLL/FLL (TPM_CLK)
-    // - valor do registrador MOD
-    // - tipo de clock (TPM_CLK)
-    // - prescaler de 1 a 128 (PS)
-    // - modo de operação EDGE_PWM
-    pwm_tpm_Init(TPM2, TPM_PLLFLL, TPM_MODULE, TPM_CLK, PS_128, EDGE_PWM);
+static const struct device *uart0_dev;
 
-    // Inicializa o canal 0 do TPM2 para gerar sinal PWM na porta GPIOB_18
-    // - modo TPM_PWM_H (nível alto durante o pulso)
-    pwm_tpm_Ch_Init(TPM2, 0, TPM_PWM_H, GPIOB, 18);
+static void uart0_cb(const struct device *dev, void *user_data) {
+    uint8_t c;
 
-    // Define o valor do duty cycle: nesse caso, duty_100 (LED quase desligado)
-    pwm_tpm_CnV(TPM2, 0, duty_50);
-
-    // Loop infinito
-    for (;;)
-    {
-        // O programa poderia alterar o duty cycle dinamicamente aqui se desejado
+    if (!uart_irq_update(dev)) {
+        return;
     }
 
-    return 0;
+    /* Clear errors */
+    uart_err_check(dev);
+
+    if (uart_irq_rx_ready(dev)) {
+        while (uart_fifo_read(dev, &c, 1) == 1) {
+
+            /* Echo back on uart0 */
+            uart_poll_out(dev, c);
+
+            /* Blink LED */
+            gpio_pin_toggle_dt(&led);
+        }
+    }
+}
+
+void main(void) {
+    /* Configure LED */
+    if (!gpio_is_ready_dt(&led)) {
+        return;
+    }
+    gpio_pin_configure_dt(&led, GPIO_OUTPUT_ACTIVE);
+
+    /* Get uart0 */
+    uart0_dev = DEVICE_DT_GET(DT_NODELABEL(uart0));
+
+    if (!device_is_ready(uart0_dev)) {
+        printk("uart0 não está pronta!\n");
+        return;
+    }
+
+    /* Configure uart0 callback */
+    uart_irq_callback_user_data_set(uart0_dev, uart0_cb, NULL);
+    uart_irq_rx_enable(uart0_dev);
+
+    while (1) {
+        k_sleep(K_FOREVER);
+    }
 }
