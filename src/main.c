@@ -7,6 +7,11 @@
 #define LED1_NODE DT_ALIAS(led1) // Azul
 #define LED2_NODE DT_ALIAS(led2) // Vermelho
 
+// Configurando um Buffer para os dados recebidos
+#define TAMANHO_PACOTE 6
+static uint8_t pacote[TAMANHO_PACOTE];
+static uint8_t indice_pacote = 0;
+
 // Verifica se o LED está definido no Device Tree
 #if DT_NODE_HAS_STATUS(LED0_NODE, okay)
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
@@ -28,6 +33,16 @@ static const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(LED2_NODE, gpios);
 
 static const struct device *uart0_dev;
 
+static uint8_t calcular_checksum(uint8_t *dados) {
+    uint8_t check = 0;
+
+    for (int i = 0; i < 5; i++) {
+        check ^= dados[i];
+    }
+
+    return check;
+}
+
 static void uart0_cb(const struct device *dev, void *user_data) {
     uint8_t c;
 
@@ -38,16 +53,26 @@ static void uart0_cb(const struct device *dev, void *user_data) {
     /* Clear errors */
     uart_err_check(dev);
 
-    if (uart_irq_rx_ready(dev)) {
-        while (uart_fifo_read(dev, &c, 1) == 1) {
+    while (uart_fifo_read(dev, &c, 1) == 1) {
 
-            /* Echo back on uart0 */
-            uart_poll_out(dev, c);
+        pacote[indice_pacote] = c;
+        indice_pacote++;
 
-            /* Blink LED */
-            gpio_pin_toggle_dt(&led);
+        if (indice_pacote == TAMANHO_PACOTE) {
+
+            uint8_t check = calcular_checksum(pacote);
+            if (check == pacote[5]) {
+             printk("Checksum correto!\n");
+            } else {
+                printk("Checksum incorreto!\n");
+            }
+
+        // Pacote completo
+        indice_pacote = 0;
         }
+   
     }
+
 }
 
 void main(void) {
