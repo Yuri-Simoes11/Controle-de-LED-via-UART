@@ -15,6 +15,8 @@ static uint8_t indice_pacote = 0;
 // ID do aparelho
 #define ID 0x01
 
+#define STACK_SIZE 1024
+
 // Verifica se o LED está definido no Device Tree
 #if DT_NODE_HAS_STATUS(LED0_NODE, okay)
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
@@ -36,6 +38,14 @@ static const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(LED2_NODE, gpios);
 
 static const struct device *uart0_dev;
 
+void piscaLed(void *p1, void *p2, void *p3) {
+
+    ARG_UNUSED(p1);
+    ARG_UNUSED(p2);
+    ARG_UNUSED(p3);
+
+}
+
 static uint8_t calcular_checksum(uint8_t *dados) {
     uint8_t check = 0;
 
@@ -50,17 +60,41 @@ static void executar_acao(uint8_t *dados)
 {
     switch (dados[4]) {
 
-    case 0x01:
-        // LIGAR
-        gpio_pin_set_dt(&led2, dados[1] > 0);
-        gpio_pin_set_dt(&led,  dados[2] > 0); // Verde
-        gpio_pin_set_dt(&led1, dados[3] > 0); // Azul
+    case 0x01: // LIGAR
+        gpio_pin_set_dt(&led2, dados[1] > 0); // Vermelho
+        gpio_pin_set_dt(&led,  dados[2] > 0); // Azul
+        gpio_pin_set_dt(&led1, dados[3] > 0); // Verde
+        break;
+
+    case 0x02: // Desligar
+        if(dados[1] > 0){
+            gpio_pin_set_dt(&led2, 0); // Vermelho
+        }
+        if(dados[2] > 0){
+            gpio_pin_set_dt(&led,  0); // Azul
+        }
+        if(dados[3] > 0){
+            gpio_pin_set_dt(&led1, 0); // Verde
+        }
+        break;
+
+    case 0x03: // Toggle
+        if(dados[1] > 0){
+            gpio_pin_toggle_dt(&led2); // Vermelho
+        }
+        if(dados[2] > 0){
+            gpio_pin_toggle_dt(&led); // Azul
+        }        
+        if(dados[3] > 0){
+            gpio_pin_toggle_dt(&led1); // Verde
+        }
         break;
 
     default:
         printk("Acao desconhecida!\n");
         break;
     }
+
 }
 
 static void uart0_cb(const struct device *dev, void *user_data) {
@@ -96,6 +130,10 @@ static void uart0_cb(const struct device *dev, void *user_data) {
     }
 
 }
+
+K_THREAD_DEFINE(a_tid, STACK_SIZE, piscaLed,
+                NULL, NULL, NULL,
+                5, 0, 0);
 
 void main(void) {
 
