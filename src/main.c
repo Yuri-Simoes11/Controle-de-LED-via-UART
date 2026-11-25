@@ -3,14 +3,17 @@
 #include <zephyr/kernel.h>
 
 // Define o LED usando Device Tree
-#define LED0_NODE DT_ALIAS(led0) // Verde
-#define LED1_NODE DT_ALIAS(led1) // Azul
+#define LED0_NODE DT_ALIAS(led0) // Azul
+#define LED1_NODE DT_ALIAS(led1) // Verde
 #define LED2_NODE DT_ALIAS(led2) // Vermelho
 
 // Configurando um Buffer para os dados recebidos
 #define TAMANHO_PACOTE 6
 static uint8_t pacote[TAMANHO_PACOTE];
 static uint8_t indice_pacote = 0;
+
+// ID do aparelho
+#define ID 0x01
 
 // Verifica se o LED está definido no Device Tree
 #if DT_NODE_HAS_STATUS(LED0_NODE, okay)
@@ -43,6 +46,23 @@ static uint8_t calcular_checksum(uint8_t *dados) {
     return check;
 }
 
+static void executar_acao(uint8_t *dados)
+{
+    switch (dados[4]) {
+
+    case 0x01:
+        // LIGAR
+        gpio_pin_set_dt(&led2, dados[1] > 0);
+        gpio_pin_set_dt(&led,  dados[2] > 0); // Verde
+        gpio_pin_set_dt(&led1, dados[3] > 0); // Azul
+        break;
+
+    default:
+        printk("Acao desconhecida!\n");
+        break;
+    }
+}
+
 static void uart0_cb(const struct device *dev, void *user_data) {
     uint8_t c;
 
@@ -61,15 +81,17 @@ static void uart0_cb(const struct device *dev, void *user_data) {
         if (indice_pacote == TAMANHO_PACOTE) {
 
             uint8_t check = calcular_checksum(pacote);
-            if (check == pacote[5]) {
-             printk("Checksum correto!\n");
+
+            if (pacote[0] == ID && check == pacote[5]) {
+                printk("Pacote valido!\n"); 
+                executar_acao(pacote);
             } else {
-                printk("Checksum incorreto!\n");
+                printk("Pacote invalido!\n");
             }
 
-        // Pacote completo
         indice_pacote = 0;
-        }
+       
+        }       
    
     }
 
