@@ -17,6 +17,12 @@ static uint8_t indice_pacote = 0;
 
 #define STACK_SIZE 1024
 
+// Variáveis globais para transferir dados para a thread
+static bool piscar_vermelho;
+static bool piscar_verde;
+static bool piscar_azul;
+static int delay_pisca;
+
 // Verifica se o LED está definido no Device Tree
 #if DT_NODE_HAS_STATUS(LED0_NODE, okay)
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(LED0_NODE, gpios);
@@ -38,11 +44,32 @@ static const struct gpio_dt_spec led2 = GPIO_DT_SPEC_GET(LED2_NODE, gpios);
 
 static const struct device *uart0_dev;
 
+K_SEM_DEFINE(piscarled, 0, 1);
+
+static void controlar_leds(bool vermelho, bool verde, bool azul) {
+    gpio_pin_set_dt(&led2, vermelho);
+    gpio_pin_set_dt(&led1, verde);
+    gpio_pin_set_dt(&led, azul);
+}
+
 void piscaLed(void *p1, void *p2, void *p3) {
 
     ARG_UNUSED(p1);
     ARG_UNUSED(p2);
     ARG_UNUSED(p3);
+
+    while(1){
+        k_sem_take(&piscarled, K_FOREVER);
+
+        controlar_leds(false, false, false);
+        k_msleep(delay_pisca);
+
+        controlar_leds(piscar_vermelho, piscar_verde, piscar_azul);
+        k_msleep(delay_pisca);
+
+        controlar_leds(false, false, false);
+        k_msleep(delay_pisca);
+    }
 
 }
 
@@ -88,6 +115,22 @@ static void executar_acao(uint8_t *dados)
         if(dados[3] > 0){
             gpio_pin_toggle_dt(&led1); // Verde
         }
+        break;
+
+    case 0x04: // Pisca 1s
+        piscar_vermelho = dados[1] > 0;
+        piscar_verde = dados[2] > 0;
+        piscar_azul = dados[3] > 0;
+        delay_pisca = 1000;
+        k_sem_give(&piscarled);
+        break;
+
+    case 0x05: // Pisca 2s
+        piscar_vermelho = dados[1] > 0;
+        piscar_verde = dados[2] > 0;
+        piscar_azul = dados[3] > 0;
+        delay_pisca = 2000;
+        k_sem_give(&piscarled);
         break;
 
     default:
