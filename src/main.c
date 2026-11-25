@@ -1,6 +1,10 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/kernel.h>
+#include <pwm_z42.h>
+
+// Define o valor do registrador MOD do TPM para configurar o período do PWM
+#define TPM_MODULE 1000         // Define a frequência do PWM fpwm = (TPM_CLK / (TPM_MODULE * PS))
 
 // Define o LED usando Device Tree
 #define LED0_NODE DT_ALIAS(led0) // Azul
@@ -95,25 +99,25 @@ static void executar_acao(uint8_t *dados)
 
     case 0x02: // Desligar
         if(dados[1] > 0){
-            gpio_pin_set_dt(&led2, 0); // Vermelho
+            gpio_pin_set_dt(&led2, 0);
         }
         if(dados[2] > 0){
-            gpio_pin_set_dt(&led,  0); // Azul
+            gpio_pin_set_dt(&led,  0);
         }
         if(dados[3] > 0){
-            gpio_pin_set_dt(&led1, 0); // Verde
+            gpio_pin_set_dt(&led1, 0); 
         }
         break;
 
     case 0x03: // Toggle
         if(dados[1] > 0){
-            gpio_pin_toggle_dt(&led2); // Vermelho
+            gpio_pin_toggle_dt(&led2);
         }
         if(dados[2] > 0){
-            gpio_pin_toggle_dt(&led); // Azul
+            gpio_pin_toggle_dt(&led);
         }        
         if(dados[3] > 0){
-            gpio_pin_toggle_dt(&led1); // Verde
+            gpio_pin_toggle_dt(&led1);
         }
         break;
 
@@ -218,6 +222,19 @@ void main(void) {
     /* Configure uart0 callback */
     uart_irq_callback_user_data_set(uart0_dev, uart0_cb, NULL);
     uart_irq_rx_enable(uart0_dev);
+
+    // Inicializa o módulo TPM2 com:
+    // - base do TPMx
+    // - fonte de clock PLL/FLL (TPM_CLK)
+    // - valor do registrador MOD
+    // - tipo de clock (TPM_CLK)
+    // - prescaler de 1 a 128 (PS)
+    // - modo de operação EDGE_PWM
+    pwm_tpm_Init(TPM2, TPM_PLLFLL, TPM_MODULE, TPM_CLK, PS_128, EDGE_PWM);
+
+    // Inicializa o canal 0 do TPM2 para gerar sinal PWM na porta GPIOB_18
+    // - modo TPM_PWM_H (nível alto durante o pulso)
+    pwm_tpm_Ch_Init(TPM2, 0, TPM_PWM_H, GPIOB, 18);
 
     while (1) {
         k_sleep(K_FOREVER);
